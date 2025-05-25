@@ -74,7 +74,7 @@ async def execute_curl(site_domain, user_domain, login, password, proxy):
         elif "HTTP/1.1 401" in output or "HTTP/2 401" in output:
             logger.info(f"FAIL: {site_domain} {full_user}:{password} Unauthorized")
             return 401
-        elif "Operation timed out" in stderr.decode() or "Connection timed out" in stderr.decode():
+        elif "Operation timed out" in stderr.decode() or "Connection timed out" in stderr.decode() or "(97)" in stderr.decode():
             logger.warning(f"PROXY TIMEOUT: {site_domain} {full_user}:{password} {proxy}")
             return "proxy_error"
         else:
