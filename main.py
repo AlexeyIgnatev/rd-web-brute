@@ -22,6 +22,7 @@ PROXY_FILE = "data/proxies.txt"
 DOMAINS_FILE = "data/domains.txt"
 LOGINS_FILE = "data/logins.txt"
 PASSWORDS_FILE = "data/passwords.txt"
+TEST_FILE = "data/test.txt"
 MAX_PROXY_RETRIES = 10
 
 bad_proxy_counter = defaultdict(int)
@@ -41,6 +42,11 @@ async def load_lines(path: str) -> List[str]:
 async def append_line(path: str, line: str):
     async with aiofiles.open(path, mode='a') as f:
         await f.write(line + '\n')
+
+
+async def test_file_permissions():
+    async with aiofiles.open(TEST_FILE, 'w') as f:
+        await f.write('test\n')
 
 
 async def execute_curl(site_domain, user_domain, login, password, proxy):
@@ -73,6 +79,7 @@ async def execute_curl(site_domain, user_domain, login, password, proxy):
             return "proxy_error"
         else:
             logger.warning(f"UNKNOWN RESPONSE: {site_domain} {full_user}:{password} {proxy}, treating as 401")
+            logger.warning(f'RESPONSE: {stdout}{stderr}')
             return 401
     except Exception as e:
         logger.error(f"EXCEPTION: {site_domain} {full_user}:{password} {proxy} — {str(e)}")
@@ -153,6 +160,7 @@ async def worker(domain_line, logins, passwords):
 
 
 async def main():
+    await test_file_permissions()
     domains = await load_lines(DOMAINS_FILE)
     logins = await load_lines(LOGINS_FILE)
     passwords = await load_lines(PASSWORDS_FILE)
