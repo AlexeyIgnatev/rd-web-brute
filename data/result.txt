@@ -1,0 +1,2 @@
+access1.databasedesigns.biz;Database.lan;Frontdesk;Password1
+qb.ailhotels.com;Hotel.local;sam;Password1

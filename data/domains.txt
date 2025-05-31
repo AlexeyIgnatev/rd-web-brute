@@ -1,4 +1,2 @@
-remote.crockett-facilities.com;cfsi.corp
-tacc.elpasoit.com;TACC.local
-rds.accentwire.com;Accentwire.com
-remote.familymedep.com;FMWT.local
+access1.databasedesigns.biz;Database.lan
+qb.ailhotels.com;Hotel.local

